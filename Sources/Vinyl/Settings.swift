@@ -1,10 +1,11 @@
 import Foundation
 
 enum SceneKind: String, CaseIterable {
-    case deck, studio, midnight
+    case lamplight, deck, studio, midnight
 
     var title: String {
         switch self {
+        case .lamplight: return "Lamplight"
         case .deck: return "Deck"
         case .studio: return "Studio"
         case .midnight: return "Midnight"
@@ -52,7 +53,7 @@ final class Settings {
 
     private init() {
         defaults.register(defaults: [
-            "scene": SceneKind.deck.rawValue,
+            "scene": SceneKind.lamplight.rawValue,
             "framing": Framing.mid.rawValue,
             "overlaySize": OverlaySize.medium.rawValue,
             "transparent": false,
@@ -67,7 +68,7 @@ final class Settings {
     }
 
     var scene: SceneKind {
-        get { SceneKind(rawValue: defaults.string(forKey: "scene") ?? "") ?? .deck }
+        get { SceneKind(rawValue: defaults.string(forKey: "scene") ?? "") ?? .lamplight }
         set { defaults.set(newValue.rawValue, forKey: "scene"); changed() }
     }
 

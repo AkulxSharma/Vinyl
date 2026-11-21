@@ -85,6 +85,28 @@ final class NowPlaying {
         }
     }
 
+    enum Command: String {
+        case playPause = "playpause"
+        case next = "next track"
+        case previous = "previous track"
+    }
+
+    /// Sends a transport command to the active player (or whichever one is open).
+    /// Play/pause flips the UI right away; the player's notification then confirms it.
+    func send(_ command: Command) {
+        let target = source ?? (PlayerSource.spotify.isRunning ? .spotify : .music)
+        guard target.isRunning else {
+            NSWorkspace.shared.open(URL(fileURLWithPath: target == .spotify
+                ? "/Applications/Spotify.app" : "/System/Applications/Music.app"))
+            return
+        }
+        if command == .playPause, track != nil {
+            source = target
+            setPlaying(!isPlaying)
+        }
+        scriptQueue.async { _ = self.run(target, command.rawValue) }
+    }
+
     func clearRecent() {
         recent.removeAll()
         saveRecent()

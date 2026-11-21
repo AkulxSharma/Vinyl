@@ -12,9 +12,16 @@ private struct Geometry {
     var infoRect = CGRect.zero
     var infoAlign: CATextLayerAlignmentMode = .center
     var maxStack = 6
-    /// Centre, side length and rotation (radians) of the i-th recently played cover.
-    var stackSlot: (Int) -> (CGPoint, CGFloat, CGFloat) = { _ in (.zero, 0, 0) }
+    /// Centre, side length and transform of the i-th recently played cover.
+    var stackSlot: (Int) -> (CGPoint, CGFloat, CATransform3D) = { _ in (.zero, 0, CATransform3DIdentity) }
+    /// Where a newly played cover flies in from, in view coordinates.
+    var flyFrom = CGPoint.zero
+    /// Area that responds to the mouse (hover controls, click to play/pause).
+    var interactRect = CGRect.zero
+    var darkText = false
 }
+
+private func rotZ(_ a: CGFloat) -> CATransform3D { CATransform3DMakeRotation(a, 0, 0, 1) }
 
 /// Renders one desktop scene with Core Animation. The record spins on the GPU via a
 /// repeating rotation animation; pausing freezes the layer's clock, so it costs no CPU.
@@ -29,6 +36,13 @@ final class SceneView: NSView {
     private var arm: CALayer?
     private var lamp: CALayer?
     private var glow: CAGradientLayer?
+    private var frameArt: CALayer?
+    private var frameArtID: String?
+
+    var interactRect: CGRect { geo.interactRect }
+
+    /// Called after each rebuild with the interactive area, so the controls window can follow.
+    var onLayout: ((CGRect) -> Void)?
     private let titleLayer = CATextLayer()
     private let artistLayer = CATextLayer()
     private let barTrack = CALayer()
@@ -63,23 +77,26 @@ final class SceneView: NSView {
         CATransaction.setDisableActions(true)
         root.sublayers?.forEach { $0.removeFromSuperlayer() }
         stackLayers.removeAll()
-        sleeve = nil; arm = nil; lamp = nil; glow = nil
+        sleeve = nil; arm = nil; lamp = nil; glow = nil; frameArt = nil; frameArtID = nil
         shownArtKey = nil
         spinPaused = false
 
         let st = Settings.shared
         geo = Geometry()
         geo.S = min(bounds.width, bounds.height) * (st.transparent ? st.overlaySize.factor : st.framing.factor)
+        if st.scene == .lamplight { geo.S *= 0.9 }
 
         switch st.scene {
+        case .lamplight: buildRoom(transparent: st.transparent)
         case .deck: buildDeck(transparent: st.transparent)
         case .studio: buildStudio(transparent: st.transparent)
         case .midnight: buildMidnight(transparent: st.transparent)
         }
-        buildInfo(visible: st.showInfo, shadowed: st.transparent)
+        buildInfo(visible: st.showInfo, shadowed: st.transparent && !geo.darkText)
         CATransaction.commit()
 
         apply(animated: false)
+        onLayout?(geo.interactRect)
     }
 
     private func add<T: CALayer>(_ l: T, z: CGFloat = 0) -> T {
@@ -105,7 +122,7 @@ final class SceneView: NSView {
                 blue: CGFloat(v & 0xFF) / 255, alpha: a)
     }
 
-    private func makeRecord(center: CGPoint, R: CGFloat, z: CGFloat) {
+    private func makeRecord(center: CGPoint, R: CGFloat, z: CGFloat, parent: CALayer? = nil) {
         let g = CALayer()
         g.bounds = CGRect(x: 0, y: 0, width: 2 * R, height: 2 * R)
         g.position = center
@@ -155,7 +172,13 @@ final class SceneView: NSView {
         spin.isRemovedOnCompletion = false
         r.add(spin, forKey: "spin")
 
-        _ = add(g, z: z)
+        if let parent {
+            parent.addSublayer(g)
+        } else {
+            _ = add(g, z: z)
+        }
+        geo.flyFrom = center
+        geo.interactRect = g.frame.insetBy(dx: -R * 0.05, dy: -R * 0.05)
         recordGroup = g
         rotor = r
         label = lab
@@ -213,9 +236,32 @@ final class SceneView: NSView {
                             [hex(0xD0D0D4), hex(0x6A6A70)])
         base.cornerRadius = br
         _ = add(base, z: 19)
+        arm = makeArm(pivot: pivot, R: R, S: S, parent: nil)
 
+        let lr = 0.022 * S
+        let l = CALayer()
+        l.frame = CGRect(x: plinth.minX + 0.07 * S, y: plinth.minY + 0.07 * S, width: 2 * lr, height: 2 * lr)
+        l.cornerRadius = lr
+        l.shadowRadius = 0.025 * S
+        l.shadowOffset = .zero
+        lamp = add(l, z: 21)
+
+        geo.infoRect = CGRect(x: plinth.minX, y: plinth.minY - 0.26 * S, width: plinth.width, height: 0.22 * S)
+        geo.infoAlign = .left
+        geo.maxStack = 7
+        let C = 0.44 * S
+        let stackBase = CGPoint(x: plinth.maxX + 0.08 * S + C / 2, y: plinth.minY + C / 2 + 0.16 * S)
+        geo.stackSlot = { i in
+            let jitter = CGFloat((i * 37) % 7 - 3)
+            return (CGPoint(x: stackBase.x + jitter * 0.006 * S, y: stackBase.y - CGFloat(i) * 0.022 * S),
+                    C, rotZ(jitter * 0.012))
+        }
+    }
+
+    private func makeArm(pivot: CGPoint, R: CGFloat, S: CGFloat, parent: CALayer?) -> CALayer {
         let L = 1.6 * R, aw = 0.2 * R
         let a = CAShapeLayer()
+        a.contentsScale = px
         a.bounds = CGRect(x: 0, y: 0, width: aw, height: L)
         a.anchorPoint = CGPoint(x: 0.5, y: 1)
         a.position = pivot
@@ -240,26 +286,172 @@ final class SceneView: NSView {
         a.shadowOpacity = 0.5
         a.shadowRadius = 0.02 * S
         a.shadowOffset = CGSize(width: 0.01 * S, height: -0.015 * S)
-        arm = add(a, z: 20)
+        a.zPosition = 20
+        if let parent { parent.addSublayer(a) } else { _ = add(a, z: 20) }
+        return a
+    }
 
-        let lr = 0.022 * S
-        let l = CALayer()
-        l.frame = CGRect(x: plinth.minX + 0.07 * S, y: plinth.minY + 0.07 * S, width: 2 * lr, height: 2 * lr)
-        l.cornerRadius = lr
-        l.shadowRadius = 0.025 * S
-        l.shadowOffset = .zero
-        lamp = add(l, z: 21)
+    /// Lamplight: a warm room at night. A globe lamp and a framed print of the last album on
+    /// the wall; a walnut turntable seen at an angle on the desk, the current sleeve on a
+    /// stand, and played records piled flat beside it.
+    private func buildRoom(transparent: Bool) {
+        let W = bounds.width, H = bounds.height, S = geo.S
+        let k: CGFloat = 0.42                       // how flat the desk plane looks
+        let deskBack = H * 0.40
+        let cx = W / 2
+        let plateW = 1.25 * S, plateD = 0.95 * S
+        let faceH = 0.11 * S
+        let yFront = max(deskBack - 0.5 * S, faceH + 0.14 * S)
+        let frameSize = min(0.5 * S, (H - deskBack) * 0.5)
+        let frameRect = CGRect(x: cx + 0.06 * W - frameSize / 2,
+                               y: deskBack + (H - deskBack) * 0.58 - frameSize / 2,
+                               width: frameSize, height: frameSize)
+        let lampH = 0.8 * S
+        let lampBase = CGPoint(x: max(W * 0.085, 0.25 * S), y: deskBack - 0.03 * S)
 
-        geo.infoRect = CGRect(x: plinth.minX, y: plinth.minY - 0.26 * S, width: plinth.width, height: 0.22 * S)
-        geo.infoAlign = .left
-        geo.maxStack = 7
-        let C = 0.44 * S
-        let stackBase = CGPoint(x: plinth.maxX + 0.08 * S + C / 2, y: plinth.minY + C / 2 + 0.16 * S)
-        geo.stackSlot = { i in
-            let jitter = CGFloat((i * 37) % 7 - 3)
-            return (CGPoint(x: stackBase.x + jitter * 0.006 * S, y: stackBase.y - CGFloat(i) * 0.022 * S),
-                    C, jitter * 0.012)
+        if !transparent {
+            let plate = CALayer()
+            plate.frame = bounds
+            plate.contents = Art.room(RoomLayout(size: bounds.size, deskBack: deskBack, lampBase: lampBase,
+                                                 lampHeight: lampH, frameRect: frameRect), scale: px)
+            _ = add(plate, z: -100)
+            let art = CALayer()
+            art.frame = frameRect.insetBy(dx: frameSize * 0.17, dy: frameSize * 0.17)
+            art.contentsGravity = .resizeAspectFill
+            art.masksToBounds = true
+            art.borderWidth = 0.5
+            art.borderColor = NSColor(white: 0, alpha: 0.25).cgColor
+            frameArt = add(art, z: -90)
         }
+
+        func shadowBlob(_ r: CGRect, _ alpha: CGFloat) {
+            let b = gradient(r, [NSColor(white: 0, alpha: alpha), NSColor(white: 0, alpha: 0)],
+                             start: CGPoint(x: 0.5, y: 0.5), end: CGPoint(x: 1, y: 1), type: .radial)
+            _ = add(b, z: -60)
+        }
+
+        // Turntable body: a front face, and a top plane that is squashed to look seen from above.
+        shadowBlob(CGRect(x: cx - plateW * 0.62, y: yFront - faceH - 0.07 * S, width: plateW * 1.24, height: 0.16 * S), 0.6)
+        let face = gradient(CGRect(x: cx - plateW / 2, y: yFront - faceH, width: plateW, height: faceH),
+                            [hex(0x6E4527), hex(0x3A2212)])
+        face.cornerRadius = 0.012 * S
+        _ = add(face, z: -40)
+        let lip = CALayer()
+        lip.frame = CGRect(x: cx - plateW / 2, y: yFront - 1.5, width: plateW, height: 1.5)
+        lip.backgroundColor = hex(0xE6B88A, 0.35).cgColor
+        _ = add(lip, z: -39)
+
+        let deck = CALayer()
+        deck.bounds = CGRect(x: 0, y: 0, width: plateW, height: plateD)
+        deck.position = CGPoint(x: cx, y: yFront + plateD * k / 2)
+        deck.transform = CATransform3DMakeScale(1, k, 1)
+        _ = add(deck, z: -30)
+        func project(_ p: CGPoint) -> CGPoint {
+            CGPoint(x: cx - plateW / 2 + p.x, y: yFront + p.y * k)
+        }
+
+        let top = gradient(deck.bounds, [hex(0x9A6A42), hex(0x6B4426)])
+        top.cornerRadius = 0.03 * S
+        deck.addSublayer(top)
+        let inset = CALayer()
+        inset.frame = deck.bounds.insetBy(dx: 0.03 * S, dy: 0.03 * S)
+        inset.cornerRadius = 0.02 * S
+        inset.backgroundColor = hex(0x1C1814).cgColor
+        inset.borderWidth = 1
+        inset.borderColor = NSColor(white: 1, alpha: 0.06).cgColor
+        deck.addSublayer(inset)
+
+        let R = 0.38 * S
+        let rc = CGPoint(x: plateW / 2 - 0.12 * S, y: plateD / 2)
+        let pr = R * 1.05
+        let side = CALayer()   // platter's visible side, offset "down" in the squashed plane
+        side.frame = CGRect(x: rc.x - pr, y: rc.y - pr - 0.05 * S / k, width: 2 * pr, height: 2 * pr)
+        side.cornerRadius = pr
+        side.backgroundColor = hex(0x2A2A2C).cgColor
+        deck.addSublayer(side)
+        let platter = gradient(CGRect(x: rc.x - pr, y: rc.y - pr, width: 2 * pr, height: 2 * pr),
+                               [hex(0xB8B8BC), hex(0x6A6A6E), hex(0xCFCFD2), hex(0x6A6A6E), hex(0xB8B8BC)],
+                               start: CGPoint(x: 0.5, y: 0.5), end: CGPoint(x: 0.5, y: 1), type: .conic)
+        platter.cornerRadius = pr
+        platter.masksToBounds = true
+        deck.addSublayer(platter)
+
+        makeRecord(center: rc, R: R, z: 0, parent: deck)
+        recordGroup.shadowOpacity = 0.3
+        geo.R = R
+        geo.recordOut = rc
+        geo.recordIn = rc
+
+        let pivot = CGPoint(x: rc.x + 1.15 * R, y: rc.y + 0.85 * R)
+        arm = makeArm(pivot: pivot, R: R, S: S, parent: deck)
+        // Arm post: an upright cylinder, drawn unsquashed so it stands up off the deck.
+        let pp = project(pivot)
+        let postW = 0.07 * S, postH = 0.09 * S
+        let post = gradient(CGRect(x: pp.x - postW / 2, y: pp.y, width: postW, height: postH),
+                            [hex(0x2B2B2D), hex(0x0E0E0F)], start: CGPoint(x: 0, y: 0.5), end: CGPoint(x: 1, y: 0.5))
+        post.cornerRadius = postW * 0.2
+        _ = add(post, z: -20)
+        let cap = CALayer()
+        cap.frame = CGRect(x: pp.x - postW / 2, y: pp.y + postH - postW * k / 2, width: postW, height: postW * k)
+        cap.cornerRadius = postW * k / 2
+        cap.backgroundColor = hex(0x9A9A9E).cgColor
+        _ = add(cap, z: -19)
+
+        let lr = 0.02 * S
+        let l = CALayer()
+        l.frame = CGRect(x: 0.08 * S, y: 0.1 * S, width: 2 * lr, height: 2 * lr)
+        l.cornerRadius = lr
+        l.shadowRadius = 0.02 * S
+        l.shadowOffset = .zero
+        deck.addSublayer(l)
+        lamp = l
+        let knob = gradient(CGRect(x: cx + plateW / 2 - 0.16 * S, y: yFront - faceH * 0.72, width: 0.06 * S, height: 0.06 * S),
+                            [hex(0xE2BE7E), hex(0x8A6330)])
+        knob.cornerRadius = 0.03 * S
+        _ = add(knob, z: -38)
+
+        geo.flyFrom = project(rc)
+        geo.interactRect = CGRect(x: cx - plateW / 2, y: yFront - faceH,
+                                  width: plateW, height: faceH + plateD * k + postH)
+
+        // Current sleeve on a wooden stand, turned slightly toward the room.
+        let sz = 0.6 * S
+        let sx = min(cx + 1.02 * S, W - 0.42 * S)
+        let sBase = yFront + 0.06 * S
+        shadowBlob(CGRect(x: sx - sz * 0.65, y: sBase - 0.05 * S, width: sz * 1.3, height: 0.12 * S), 0.55)
+        let sl = CALayer()
+        sl.anchorPoint = CGPoint(x: 0.5, y: 0)
+        sl.bounds = CGRect(x: 0, y: 0, width: sz, height: sz)
+        sl.position = CGPoint(x: sx, y: sBase + 0.035 * S)
+        var t = CATransform3DIdentity
+        t.m34 = -1 / (4 * sz)
+        sl.transform = CATransform3DRotate(t, -0.32, 0, 1, 0)
+        sl.contentsGravity = .resizeAspectFill
+        sl.contents = Art.defaultSleeve
+        sl.shadowOpacity = 0.55
+        sl.shadowRadius = 0.03 * S
+        sl.shadowOffset = CGSize(width: -0.01 * S, height: 0)
+        sleeve = add(sl, z: -10)
+        let stand = gradient(CGRect(x: sx - sz * 0.55, y: sBase, width: sz * 1.1, height: 0.05 * S),
+                             [hex(0x8A5A34), hex(0x4A2C16)])
+        stand.cornerRadius = 0.008 * S
+        _ = add(stand, z: -9)
+
+        // Played records, lying flat in a loose pile.
+        let pileC = CGPoint(x: max(cx - 1.05 * S, 0.38 * S), y: yFront + 0.03 * S)
+        let C = 0.56 * S
+        shadowBlob(CGRect(x: pileC.x - C * 0.7, y: pileC.y - C * k * 0.7, width: C * 1.4, height: C * k * 1.4), 0.5)
+        geo.maxStack = 6
+        geo.stackSlot = { i in
+            let f = CGFloat(i)
+            let jitter = CGFloat((i * 53) % 9 - 4)
+            let p = CGPoint(x: pileC.x + jitter * 0.008 * S, y: pileC.y - f * 0.009 * S)
+            return (p, C, CATransform3DConcat(rotZ(jitter * 0.035), CATransform3DMakeScale(1, k, 1)))
+        }
+
+        geo.darkText = !transparent
+        geo.infoAlign = .center
+        geo.infoRect = CGRect(x: frameRect.midX - 0.5 * S, y: frameRect.minY - 0.23 * S, width: S, height: 0.2 * S)
     }
 
     /// Studio: a big sleeve with the record sliding out of it; past sleeves fanned to the right.
@@ -289,6 +481,7 @@ final class SceneView: NSView {
         sl.shadowRadius = 0.04 * S
         sl.shadowOffset = CGSize(width: 0.01 * S, height: -0.025 * S)
         sleeve = add(sl, z: 10)
+        geo.interactRect = sl.frame.union(CGRect(x: geo.recordOut.x - R, y: geo.recordOut.y - R, width: 2 * R, height: 2 * R))
 
         geo.infoRect = CGRect(x: sc.x - C / 2, y: sc.y - C / 2 - 0.24 * S, width: C, height: 0.2 * S)
         geo.infoAlign = .left
@@ -297,7 +490,7 @@ final class SceneView: NSView {
         geo.stackSlot = { i in
             let f = CGFloat(i)
             return (CGPoint(x: pileCenter.x - f * 0.03 * S, y: pileCenter.y + f * 0.012 * S),
-                    0.3 * S, -0.08 + f * 0.09)
+                    0.3 * S, rotZ(-0.08 + f * 0.09))
         }
     }
 
@@ -337,7 +530,7 @@ final class SceneView: NSView {
         geo.infoAlign = .center
         geo.maxStack = 6
         geo.stackSlot = { i in
-            (CGPoint(x: c.x - 0.375 * S + CGFloat(i) * 0.15 * S, y: c.y - 0.56 * S), 0.12 * S, 0)
+            (CGPoint(x: c.x - 0.375 * S + CGFloat(i) * 0.15 * S, y: c.y - 0.56 * S), 0.12 * S, CATransform3DIdentity)
         }
     }
 
@@ -350,7 +543,8 @@ final class SceneView: NSView {
             t.frame = CGRect(x: r.minX, y: y, width: r.width, height: size * 1.35)
             t.font = NSFont.systemFont(ofSize: size, weight: weight)
             t.fontSize = size
-            t.foregroundColor = NSColor(white: 1, alpha: alpha).cgColor
+            t.foregroundColor = (geo.darkText ? NSColor(red: 0.16, green: 0.09, blue: 0.05, alpha: alpha)
+                                              : NSColor(white: 1, alpha: alpha)).cgColor
             t.alignmentMode = geo.infoAlign
             t.truncationMode = .end
             t.isHidden = !visible
@@ -364,13 +558,14 @@ final class SceneView: NSView {
 
         let h = max(2, 0.006 * S)
         barTrack.frame = CGRect(x: r.minX, y: r.maxY - 0.15 * S, width: r.width, height: h)
-        barTrack.backgroundColor = NSColor(white: 1, alpha: 0.15).cgColor
+        barTrack.backgroundColor = (geo.darkText ? NSColor(white: 0, alpha: 0.15) : NSColor(white: 1, alpha: 0.15)).cgColor
         barTrack.cornerRadius = h / 2
         barTrack.isHidden = !visible
         barFill.anchorPoint = CGPoint(x: 0, y: 0.5)
         barFill.bounds = CGRect(x: 0, y: 0, width: 0, height: h)
         barFill.position = CGPoint(x: 0, y: h / 2)
-        barFill.backgroundColor = NSColor(white: 1, alpha: 0.85).cgColor
+        barFill.backgroundColor = (geo.darkText ? NSColor(red: 0.16, green: 0.09, blue: 0.05, alpha: 0.8)
+                                                : NSColor(white: 1, alpha: 0.85)).cgColor
         barFill.cornerRadius = h / 2
         barTrack.addSublayer(barFill)
         _ = add(barTrack, z: 30)
@@ -399,6 +594,14 @@ final class SceneView: NSView {
             glow?.colors = [tint.withAlphaComponent(0.5), tint.withAlphaComponent(0.14),
                             tint.withAlphaComponent(0)].map(\.cgColor)
             shownArtKey = artKey
+        }
+
+        if let frameArt {
+            let last = np.recent.first
+            if last?.id != frameArtID || frameArt.contents == nil {
+                frameArt.contents = last?.image ?? Art.defaultSleeve
+                frameArtID = last?.id
+            }
         }
 
         let lowPower = st.pauseInLowPower && ProcessInfo.processInfo.isLowPowerModeEnabled
@@ -482,7 +685,7 @@ final class SceneView: NSView {
         }
 
         for (i, item) in items.enumerated() {
-            let (center, size, rot) = geo.stackSlot(i)
+            let (center, size, transform) = geo.stackSlot(i)
             let isNew = stackLayers[item.id] == nil
             let l = stackLayers[item.id] ?? {
                 let n = CALayer()
@@ -499,17 +702,17 @@ final class SceneView: NSView {
 
             l.bounds = CGRect(x: 0, y: 0, width: size, height: size)
             l.position = center
-            l.transform = CATransform3DMakeRotation(rot, 0, 0, 1)
+            l.transform = transform
             l.zPosition = CGFloat(50 - i)
             l.opacity = 1
 
             if isNew && animated {
                 let from = CABasicAnimation(keyPath: "position")
-                from.fromValue = NSValue(point: recordGroup.position)
+                from.fromValue = NSValue(point: geo.flyFrom)
                 let fade = CABasicAnimation(keyPath: "opacity")
                 fade.fromValue = 0
-                let grow = CABasicAnimation(keyPath: "transform.scale")
-                grow.fromValue = 0.5
+                let grow = CABasicAnimation(keyPath: "transform")
+                grow.fromValue = NSValue(caTransform3D: CATransform3DScale(transform, 0.5, 0.5, 1))
                 let group = CAAnimationGroup()
                 group.animations = [from, fade, grow]
                 group.duration = 0.9
