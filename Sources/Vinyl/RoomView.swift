@@ -93,7 +93,7 @@ final class RoomView: SCNView {
 
         // Globe lamp, back right.
         let lamp = SCNNode()
-        lamp.position = SCNVector3(-0.62, 0, -0.8)
+        lamp.position = SCNVector3(-0.62, 0, -0.62)
         environment.addChildNode(lamp)
         let brass = pbr(hex(0xC89B5A), rough: 0.3, metal: 1)
         let foot = SCNCylinder(radius: 0.075, height: 0.018)
@@ -102,10 +102,20 @@ final class RoomView: SCNView {
         let stem = SCNCylinder(radius: 0.007, height: 0.24)
         stem.materials = [brass]
         node(stem, SCNVector3(0, 0.13, 0), in: lamp)
+        // Frosted glass globe with a bright bulb inside, so it reads round, not as a flat disc.
         let globe = SCNSphere(radius: 0.085)
-        let opal = pbr(hex(0x806040), rough: 0.6)
-        opal.emission.contents = hex(0xFFB86A)
-        opal.emission.intensity = 2.5
+        globe.segmentCount = 64
+        let opal = SCNMaterial()
+        opal.lightingModel = .constant
+        // Brightest where the glass faces you, warmer and dimmer toward the rim,
+        // like light diffusing through frosted glass.
+        opal.shaderModifiers = [.fragment: """
+        #pragma body
+        float facing = max(dot(normalize(_surface.normal), normalize(_surface.view)), 0.0);
+        float3 rim = float3(1.0, 0.5, 0.2) * 0.9;
+        float3 core = float3(1.0, 0.8, 0.5) * 2.4;
+        _output.color.rgb = mix(rim, core, pow(facing, 1.8));
+        """]
         globe.materials = [opal]
         node(globe, SCNVector3(0, 0.33, 0), in: lamp)
         lamp.enumerateHierarchy { n, _ in n.castsShadow = false }
@@ -114,10 +124,10 @@ final class RoomView: SCNView {
         let glow = SCNLight()
         glow.type = .omni
         glow.color = hex(0xFF9E62)
-        glow.intensity = 2.5
+        glow.intensity = 1.8
         glow.attenuationStartDistance = 0.1
-        glow.attenuationEndDistance = 4
-        glow.attenuationFalloffExponent = 1
+        glow.attenuationEndDistance = 5
+        glow.attenuationFalloffExponent = 2
         node(SCNSphere(radius: 0.001), SCNVector3(0, 0.33, 0), in: lamp).light = glow
 
         let key = SCNLight()
@@ -158,19 +168,19 @@ final class RoomView: SCNView {
         node(print, SCNVector3(0, 0, 0.0132), in: frame)
         let bar = SCNCylinder(radius: 0.008, height: 0.16)
         bar.materials = [brass]
-        let barNode = node(bar, SCNVector3(0, 0.215, 0.05), in: frame)
+        let barNode = node(bar, SCNVector3(0, 0.19, 0.035), in: frame)
         barNode.eulerAngles.z = .pi / 2
         let pictureLight = SCNLight()
         pictureLight.type = .spot
         pictureLight.color = hex(0xFFC690)
-        pictureLight.intensity = 2.5
-        pictureLight.spotInnerAngle = 5
-        pictureLight.spotOuterAngle = 95
+        pictureLight.intensity = 1.6
+        pictureLight.spotInnerAngle = 35
+        pictureLight.spotOuterAngle = 120
         let pl = SCNNode()
         pl.light = pictureLight
-        pl.position = SCNVector3(0, 0.2, 0.09)
+        pl.position = SCNVector3(0, 0.185, 0.07)
         frame.addChildNode(pl)
-        pl.look(at: SCNVector3(-0.08, 0.4, -0.93))
+        pl.look(at: SCNVector3(0.02, 0.36, -0.93))
 
         // Very low warm ambient so shadows stay rich but not black.
         let ambient = SCNLight()
@@ -185,7 +195,7 @@ final class RoomView: SCNView {
         let fill = SCNLight()
         fill.type = .directional
         fill.color = hex(0xC8906A)
-        fill.intensity = 30
+        fill.intensity = 40
         let f = SCNNode()
         f.light = fill
         f.position = SCNVector3(-0.5, 1, 2)
@@ -202,6 +212,7 @@ final class RoomView: SCNView {
         node(base, SCNVector3(0, 0.011, 0), in: stand)
         sleeveMaterial.lightingModel = .physicallyBased
         sleeveMaterial.roughness.contents = 0.55
+        sleeveMaterial.emission.intensity = 0.35
         let back = pbr(hex(0xE8E0D0), rough: 0.8)
         let sleeve = SCNBox(width: 0.31, height: 0.31, length: 0.004, chamferRadius: 0.001)
         sleeve.materials = [sleeveMaterial, back, back, back, back, back]
@@ -288,8 +299,8 @@ final class RoomView: SCNView {
         cam.zFar = 20
         cam.wantsHDR = true
         cam.bloomIntensity = 0.45
-        cam.bloomThreshold = 0.75
-        cam.bloomBlurRadius = 9
+        cam.bloomThreshold = 1.0
+        cam.bloomBlurRadius = 16
         cam.vignettingIntensity = 0.7
         cam.vignettingPower = 0.8
         cam.screenSpaceAmbientOcclusionIntensity = 1.2
@@ -335,6 +346,7 @@ final class RoomView: SCNView {
         if key != shownArtKey {
             labelMaterial.diffuse.contents = art ?? Art.defaultLabel
             sleeveMaterial.diffuse.contents = art ?? Art.defaultSleeve
+            sleeveMaterial.emission.contents = art ?? Art.defaultSleeve
             shownArtKey = key
         }
         let last = np.recent.first
