@@ -8,6 +8,9 @@ import AppKit
 /// previous / play-pause / next buttons; clicking the record toggles playback.
 final class ControlsPanel: NSPanel {
     private let controls = ControlsView()
+    weak var host: SceneHost? {
+        didSet { controls.host = host }
+    }
 
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
@@ -43,6 +46,13 @@ final class ControlsPanel: NSPanel {
 private final class ControlsView: NSView {
     static let pillHeight: CGFloat = 40
     var playerHeight: CGFloat = 0 { didSet { needsLayout = true } }
+    weak var host: SceneHost?
+
+    private var downPoint: CGPoint?
+    private var scratching = false
+    private var lastDragTime: TimeInterval = 0
+    private var resumeAfterScratch = false
+    private var idleWork: DispatchWorkItem?
 
     private let pill = NSVisualEffectView()
     private let playButton = NSButton()
@@ -128,7 +138,52 @@ private final class ControlsView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
-        if p.y <= playerHeight { togglePlay() }
+        downPoint = p.y <= playerHeight ? p : nil
+        lastDragTime = event.timestamp
+    }
+
+    /// Dragging across the record scratches it: the record follows the hand, and the
+    /// synthesised scratch plays at the matching speed and direction.
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = downPoint else { return }
+        let p = convert(event.locationInWindow, from: nil)
+        if !scratching {
+            guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
+            scratching = true
+            resumeAfterScratch = NowPlaying.shared.isPlaying
+            if resumeAfterScratch { NowPlaying.shared.send(.playPause) }
+            host?.beginScratch()
+            Scratcher.shared.begin()
+        }
+        // Seen from the front, the far half of the record moves right when it plays
+        // forward and the near half moves left, so flip the sign below the centre.
+        let radius = max(bounds.width * 0.3, 1)
+        let side: CGFloat = p.y > playerHeight * 0.55 ? 1 : -1
+        let angle = (event.deltaX * side + event.deltaY * (p.x > bounds.midX ? 1 : -1) * 0.5) / radius
+        let dt = max(event.timestamp - lastDragTime, 1.0 / 240)
+        lastDragTime = event.timestamp
+        host?.scratch(by: angle)
+        let normalSpeed = 2 * CGFloat.pi / 1.8             // 33⅓ rpm in radians per second
+        Scratcher.shared.set(rate: Float(angle / CGFloat(dt) / normalSpeed))
+
+        // If the hand holds still, the record (and the sound) stops.
+        idleWork?.cancel()
+        let work = DispatchWorkItem { Scratcher.shared.set(rate: 0) }
+        idleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        defer { downPoint = nil }
+        if scratching {
+            scratching = false
+            idleWork?.cancel()
+            Scratcher.shared.end()
+            host?.endScratch()
+            if resumeAfterScratch { NowPlaying.shared.send(.playPause) }
+        } else if downPoint != nil {
+            togglePlay()
+        }
     }
 
     @objc private func togglePlay() { NowPlaying.shared.send(.playPause) }

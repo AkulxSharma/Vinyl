@@ -625,7 +625,26 @@ final class SceneView: NSView {
         updateProgress()
     }
 
+    private var scratching = false
+
+    func beginScratch() {
+        scratching = true
+        setSpin(false)
+    }
+
+    /// The paused spin animation's clock doubles as the record angle, so nudging the
+    /// time offset turns the record by hand.
+    func scratch(by angle: CGFloat) {
+        rotor.timeOffset += Double(angle) / (2 * Double.pi) * 1.8
+    }
+
+    func endScratch() {
+        scratching = false
+        apply(animated: true)
+    }
+
     private func setSpin(_ on: Bool) {
+        let on = on && !scratching
         if on && spinPaused {
             let paused = rotor.timeOffset
             rotor.speed = 1

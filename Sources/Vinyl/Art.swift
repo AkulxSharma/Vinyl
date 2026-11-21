@@ -120,3 +120,37 @@ enum Art {
         return NSColor(hue: h, saturation: min(1, s * 1.3), brightness: max(b, 0.6), alpha: 1)
     }
 }
+
+extension Art {
+    /// Walnut wood texture with long grain, used for the desk, plinth and stand.
+    static let woodTexture: CGImage = render(width: 2048, height: 1024) { ctx in
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let colors = [NSColor(red: 0.36, green: 0.17, blue: 0.08, alpha: 1).cgColor,
+                      NSColor(red: 0.27, green: 0.12, blue: 0.05, alpha: 1).cgColor,
+                      NSColor(red: 0.33, green: 0.15, blue: 0.07, alpha: 1).cgColor] as CFArray
+        ctx.drawLinearGradient(CGGradient(colorsSpace: space, colors: colors, locations: [0, 0.5, 1])!,
+                               start: .zero, end: CGPoint(x: 0, y: 1024), options: [])
+        var seed: UInt64 = 0x51ED270B
+        func rand() -> CGFloat {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return CGFloat(seed >> 33) / CGFloat(UInt32.max >> 1)
+        }
+        for _ in 0..<520 {
+            let y = rand() * 1024
+            let amp = 2 + rand() * 9, freq = 0.001 + rand() * 0.004, phase = rand() * 6.28
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: 0, y: y))
+            var x: CGFloat = 0
+            while x <= 2048 {
+                path.addLine(to: CGPoint(x: x, y: y + amp * sin(x * freq + phase)))
+                x += 16
+            }
+            let dark = rand() < 0.65
+            ctx.setStrokeColor(dark ? NSColor(red: 0.08, green: 0.03, blue: 0.01, alpha: 0.12 + rand() * 0.2).cgColor
+                                    : NSColor(red: 0.6, green: 0.32, blue: 0.16, alpha: 0.06 + rand() * 0.1).cgColor)
+            ctx.setLineWidth(0.6 + rand() * 2.6)
+            ctx.addPath(path)
+            ctx.strokePath()
+        }
+    }
+}

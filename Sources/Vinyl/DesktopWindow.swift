@@ -18,8 +18,9 @@ final class DesktopWindowController {
         window.hasShadow = false
         window.isReleasedWhenClosed = false
 
-        let view = SceneView(frame: NSRect(origin: .zero, size: screen.frame.size),
+        let view = SceneHost(frame: NSRect(origin: .zero, size: screen.frame.size),
                              backingScale: screen.backingScaleFactor)
+        controls.host = view
         view.onLayout = { [weak self] rect in self?.controls.place(rect, on: screen) }
         window.contentView = view
         window.orderFront(nil)
