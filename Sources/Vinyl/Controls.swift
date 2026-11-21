@@ -190,3 +190,71 @@ private final class ControlsView: NSView {
     @objc private func next() { NowPlaying.shared.send(.next) }
     @objc private func previous() { NowPlaying.shared.send(.previous) }
 }
+
+/// Transparent panel over the desk globe: drag sideways to spin it; it coasts on release.
+final class GlobePanel: NSPanel {
+    weak var host: SceneHost?
+
+    init() {
+        super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
+                   backing: .buffered, defer: false)
+        level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
+        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenNone]
+        isOpaque = false
+        backgroundColor = NSColor(white: 0, alpha: 0.01)
+        hasShadow = false
+        isReleasedWhenClosed = false
+        hidesOnDeactivate = false
+        contentView = GlobeDragView(panel: self)
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+
+    func place(_ rect: CGRect, on screen: NSScreen) {
+        guard rect.width > 0 else { orderOut(nil); return }
+        setFrame(rect.offsetBy(dx: screen.frame.minX, dy: screen.frame.minY), display: true)
+        orderFront(nil)
+    }
+}
+
+private final class GlobeDragView: NSView {
+    private weak var panel: GlobePanel?
+    private var lastTime: TimeInterval = 0
+    private var velocity: CGFloat = 0
+
+    init(panel: GlobePanel) {
+        self.panel = panel
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .openHand)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        NSCursor.closedHand.set()
+        lastTime = event.timestamp
+        velocity = 0
+        panel?.host?.room?.beginGlobeSpin()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let angle = event.deltaX / max(bounds.width * 0.35, 1)
+        let dt = max(event.timestamp - lastTime, 1.0 / 240)
+        lastTime = event.timestamp
+        velocity = angle / CGFloat(dt)
+        panel?.host?.room?.spinGlobe(by: angle)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        NSCursor.openHand.set()
+        // A pause before letting go means no fling.
+        let held = event.timestamp - lastTime > 0.08
+        panel?.host?.room?.endGlobeSpin(velocity: held ? 0 : velocity)
+    }
+}

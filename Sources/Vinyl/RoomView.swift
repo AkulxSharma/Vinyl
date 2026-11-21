@@ -15,6 +15,10 @@ final class RoomView: SCNView {
     private let turntable = SCNNode()
     private let recordSpin = SCNNode()
     private let armPivot = SCNNode()
+    private let globeSpin = SCNNode()
+    private var globeNode: SCNNode?
+    private(set) var globeRect = CGRect.zero
+    var onGlobeLayout: ((CGRect) -> Void)?
     private let labelMaterial = SCNMaterial()
     private let sleeveMaterial = SCNMaterial()
     private let frameMaterial = SCNMaterial()
@@ -91,44 +95,52 @@ final class RoomView: SCNView {
         desk.materials = [wood]
         node(desk, SCNVector3(0, -0.025, -0.2), in: environment)
 
-        // Globe lamp, back right.
-        let lamp = SCNNode()
-        lamp.position = SCNVector3(-0.62, 0, -0.62)
-        environment.addChildNode(lamp)
+        // Desk globe, back left: Earth on a tilted axis inside a brass meridian ring.
+        // It turns slowly while music plays and can be spun by hand.
+        let globeStand = SCNNode()
+        globeStand.position = SCNVector3(-0.6, 0, -0.6)
+        environment.addChildNode(globeStand)
         let brass = pbr(hex(0xC89B5A), rough: 0.3, metal: 1)
-        let foot = SCNCylinder(radius: 0.075, height: 0.018)
-        foot.materials = [brass]
-        node(foot, SCNVector3(0, 0.009, 0), in: lamp)
-        let stem = SCNCylinder(radius: 0.007, height: 0.24)
+        let foot = SCNCylinder(radius: 0.07, height: 0.02)
+        foot.materials = [pbr(Art.woodTexture, rough: 0.4)]
+        node(foot, SCNVector3(0, 0.01, 0), in: globeStand)
+        let stem = SCNCylinder(radius: 0.008, height: 0.07)
         stem.materials = [brass]
-        node(stem, SCNVector3(0, 0.13, 0), in: lamp)
-        // Frosted glass globe with a bright bulb inside, so it reads round, not as a flat disc.
-        let globe = SCNSphere(radius: 0.085)
-        globe.segmentCount = 64
-        let opal = SCNMaterial()
-        opal.lightingModel = .constant
-        // Brightest where the glass faces you, warmer and dimmer toward the rim,
-        // like light diffusing through frosted glass.
-        opal.shaderModifiers = [.fragment: """
-        #pragma body
-        float facing = max(dot(normalize(_surface.normal), normalize(_surface.view)), 0.0);
-        float3 rim = float3(1.0, 0.5, 0.2) * 0.9;
-        float3 core = float3(1.0, 0.8, 0.5) * 2.4;
-        _output.color.rgb = mix(rim, core, pow(facing, 1.8));
-        """]
-        globe.materials = [opal]
-        node(globe, SCNVector3(0, 0.33, 0), in: lamp)
-        lamp.enumerateHierarchy { n, _ in n.castsShadow = false }
+        node(stem, SCNVector3(0, 0.055, 0), in: globeStand)
+        let tilt = SCNNode()
+        tilt.position = SCNVector3(0, 0.2, 0)
+        tilt.eulerAngles.z = 0.41                      // Earth's 23.4° axial tilt
+        globeStand.addChildNode(tilt)
+        let meridian = SCNTorus(ringRadius: 0.118, pipeRadius: 0.004)
+        meridian.materials = [brass]
+        let ring = node(meridian, SCNVector3(0, 0, 0), in: tilt)
+        ring.eulerAngles.x = .pi / 2
+        let earth = SCNSphere(radius: 0.11)
+        earth.segmentCount = 96
+        let land = SCNMaterial()
+        land.lightingModel = .physicallyBased
+        land.diffuse.contents = Bundle.main.url(forResource: "earth", withExtension: "jpg")
+            .flatMap { NSImage(contentsOf: $0) } ?? hex(0x2B5A8A)
+        land.roughness.contents = 0.45
+        land.emission.contents = land.diffuse.contents
+        land.emission.intensity = 0.4
+        earth.materials = [land]
+        globeSpin.geometry = earth
+        tilt.addChildNode(globeSpin)
+        globeNode = globeStand
 
-        // Light from the globe: a soft omni fill plus a shadow-casting spot.
+        // Light from an unseen lamp up to the left: a soft omni wash plus a shadow-casting spot.
+        let lamp = SCNNode()
+        lamp.position = SCNVector3(-1.05, 0.38, -0.55)
+        environment.addChildNode(lamp)
         let glow = SCNLight()
         glow.type = .omni
         glow.color = hex(0xFF9E62)
-        glow.intensity = 1.8
+        glow.intensity = 3
         glow.attenuationStartDistance = 0.1
         glow.attenuationEndDistance = 5
         glow.attenuationFalloffExponent = 2
-        node(SCNSphere(radius: 0.001), SCNVector3(0, 0.33, 0), in: lamp).light = glow
+        node(SCNSphere(radius: 0.001), SCNVector3(0, 0, 0), in: lamp).light = glow
 
         let key = SCNLight()
         key.type = .spot
@@ -146,7 +158,7 @@ final class RoomView: SCNView {
         key.attenuationFalloffExponent = 1.5
         let keyNode = SCNNode()
         keyNode.light = key
-        keyNode.position = SCNVector3(-0.62, 0.5, -0.6)
+        keyNode.position = SCNVector3(-0.95, 0.55, -0.35)
         keyNode.look(at: SCNVector3(0.2, 0, -0.3))
         environment.addChildNode(keyNode)
 
@@ -356,6 +368,10 @@ final class RoomView: SCNView {
         }
 
         recordSpin.isPaused = scratching || !(playing && !lowPower)
+        if globeSpin.action(forKey: "drift") == nil {
+            globeSpin.runAction(.repeatForever(.rotateBy(x: 0, y: 2 * .pi, z: 0, duration: 60)), forKey: "drift")
+        }
+        globeSpin.action(forKey: "drift")?.speed = (playing && !lowPower) ? 1 : 0
         armPivot.removeAllActions()
         let action = SCNAction.rotateTo(x: 0, y: playing ? -0.55 : 0.05, z: 0, duration: 1.0, usesShortestUnitArc: true)
         action.timingMode = .easeInEaseOut
@@ -433,6 +449,28 @@ final class RoomView: SCNView {
         stateChanged()
     }
 
+    // MARK: Spinning the globe by hand
+
+    func beginGlobeSpin() {
+        globeSpin.removeAction(forKey: "coast")
+        rendersContinuously = true
+    }
+
+    func spinGlobe(by angle: CGFloat) {
+        globeSpin.eulerAngles.y += angle
+    }
+
+    /// Lets the globe coast after release, slowing down like a real one.
+    func endGlobeSpin(velocity: CGFloat) {
+        let coast = SCNAction.rotateBy(x: 0, y: velocity * 0.9, z: 0, duration: 1.8)
+        coast.timingMode = .easeOut
+        globeSpin.runAction(coast, forKey: "coast")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self, !self.scratching else { return }
+            self.rendersContinuously = false
+        }
+    }
+
     // MARK: Hit area for the controls panel
 
     override func layout() {
@@ -453,8 +491,21 @@ final class RoomView: SCNView {
                 }
             }
         }
-        guard !rect.isNull, rect != interactRect else { return }
-        interactRect = rect
-        onLayout?(rect)
+        if !rect.isNull, rect != interactRect {
+            interactRect = rect
+            onLayout?(rect)
+        }
+        if let g = globeNode, !g.isHidden, !environment.isHidden {
+            let (gmin, gmax) = g.boundingBox
+            var gr = CGRect.null
+            for x in [gmin.x, gmax.x] { for y in [gmin.y, gmax.y] { for z in [gmin.z, gmax.z] {
+                let p = projectPoint(g.convertPosition(SCNVector3(x, y, z), to: nil))
+                gr = gr.union(CGRect(x: p.x, y: p.y, width: 0, height: 0))
+            } } }
+            if gr != globeRect { globeRect = gr; onGlobeLayout?(gr) }
+        } else if globeRect != .zero {
+            globeRect = .zero
+            onGlobeLayout?(.zero)
+        }
     }
 }

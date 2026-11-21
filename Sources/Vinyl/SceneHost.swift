@@ -4,6 +4,9 @@ import AppKit
 /// the Core Animation `SceneView` for the others. Swaps when the scene setting changes.
 final class SceneHost: NSView {
     var onLayout: ((CGRect) -> Void)?
+    var onGlobeLayout: ((CGRect) -> Void)?
+    var globeRect: CGRect { (current as? RoomView)?.globeRect ?? .zero }
+    var room: RoomView? { current as? RoomView }
     private let scale: CGFloat
     private var current: NSView?
     private var showingRoom = false
@@ -48,6 +51,7 @@ final class SceneHost: NSView {
         if wantRoom {
             let v = RoomView(roomFrame: bounds)
             v.onLayout = forward
+            v.onGlobeLayout = { [weak self] r in self?.onGlobeLayout?(r) }
             current = v
         } else {
             let v = SceneView(frame: bounds, backingScale: scale)
@@ -57,5 +61,6 @@ final class SceneHost: NSView {
         current!.autoresizingMask = [.width, .height]
         addSubview(current!)
         onLayout?(interactRect)
+        onGlobeLayout?(globeRect)
     }
 }

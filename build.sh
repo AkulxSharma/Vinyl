@@ -10,6 +10,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/Vinyl "$APP/Contents/MacOS/Vinyl"
 cp Info.plist "$APP/Contents/Info.plist"
+cp Resources/* "$APP/Contents/Resources/"
 # Ad-hoc signature: fine for running locally. macOS may ask for Automation access
 # again after each rebuild because the signature changes.
 codesign --force --sign - "$APP"

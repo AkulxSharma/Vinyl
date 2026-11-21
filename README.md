@@ -5,7 +5,7 @@ An open-source take on the "Vinyl for Mac" idea: your desktop wallpaper becomes 
 ## Features
 
 - **Four scenes**, switchable from the menu bar:
-  - **Lamplight** (default): a warm room at night. A globe lamp lights the wall, and a framed print shows your previous album. The turntable sits at an angle on a walnut desk, the current sleeve leans on a stand, and played records pile up flat beside it.
+  - **Lamplight** (default): a warm room at night. A desk globe of the Earth turns slowly while music plays, and you can drag it to spin it. A framed print under a picture light shows your previous album. The turntable sits at an angle on a walnut desk, the current sleeve leans on a stand, and played records pile up flat beside it.
   - **Deck:** a turntable on a wooden table. The tonearm swings onto the record when music plays, and played records pile up beside it.
   - **Studio:** a large album sleeve. The record slides out when you press play and back in when you pause, and past covers fan out to the side.
   - **Midnight:** a floating record on a dark background, with a glow tinted by the album's colors and recent covers in a row underneath.
@@ -54,6 +54,10 @@ Because `build.sh` signs the app ad hoc, macOS may ask for Automation access aga
 | `Sources/Vinyl/Art.swift` | Procedurally drawn record, default label and sleeve |
 | `Sources/Vinyl/StatusMenu.swift` | Menu bar menu |
 | `Sources/Vinyl/Settings.swift` | Preferences |
+
+## Credits
+
+The Earth texture is `earth_atmos_2048.jpg` from the three.js examples (MIT), which is derived from NASA's Blue Marble imagery (public domain).
 
 ## License
 
