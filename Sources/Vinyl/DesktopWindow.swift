@@ -28,6 +28,7 @@ final class DesktopWindowController {
         window.contentView = view
         window.orderFront(nil)
         controls.place(view.interactRect, on: screen)
+        globe.place(view.globeRect, on: screen)
     }
 
     func close() {
