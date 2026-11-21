@@ -17,6 +17,8 @@ final class RoomView: SCNView {
     private let armPivot = SCNNode()
     private let globeSpin = SCNNode()
     private var globeNode: SCNNode?
+    private var earthMaterial: SCNMaterial?
+    private var sunTimer: Timer?
     private(set) var globeRect = CGRect.zero
     var onGlobeLayout: ((CGRect) -> Void)?
     private let labelMaterial = SCNMaterial()
@@ -121,12 +123,47 @@ final class RoomView: SCNView {
         land.lightingModel = .physicallyBased
         land.diffuse.contents = Bundle.main.url(forResource: "earth", withExtension: "jpg")
             .flatMap { NSImage(contentsOf: $0) } ?? hex(0x2B5A8A)
-        land.roughness.contents = 0.45
+        land.roughness.contents = 1.0
+        land.metalness.contents = 0.0
         land.emission.contents = land.diffuse.contents
-        land.emission.intensity = 0.4
+        land.emission.intensity = 0.55
+        // Real-time day and night: the shader works out each point's latitude and longitude
+        // from its texture coordinate and darkens whatever faces away from the sun, so the
+        // terminator stays geographically correct however the globe is spun.
+        land.shaderModifiers = [.surface: """
+        #pragma arguments
+        float3 sunDir;
+        #pragma body
+        float2 uv = _surface.diffuseTexcoord;
+        float lon = (uv.x * 2.0 - 1.0) * M_PI_F;
+        float lat = (0.5 - uv.y) * M_PI_F;
+        float3 p = float3(cos(lat) * cos(lon), cos(lat) * sin(lon), sin(lat));
+        float day = smoothstep(-0.07, 0.1, dot(p, sunDir));
+        _surface.diffuse.rgb = _surface.diffuse.rgb * mix(0.4, 1.0, day) + (1.0 - day) * float3(0.0, 0.015, 0.045);
+        _surface.emission.rgb *= mix(0.3, 1.0, day);
+        """]
+        earthMaterial = land
+        updateSun()
         earth.materials = [land]
         globeSpin.geometry = earth
+        globeSpin.categoryBitMask = 2
+        // Start with your own time zone facing the room (local UTC offset × 15° of longitude).
+        let homeLongitude = Double(TimeZone.current.secondsFromGMT()) / 3600 * 15
+        globeSpin.eulerAngles.y = CGFloat(-homeLongitude * .pi / 180)   // unrotated sphere faces 0° longitude
         tilt.addChildNode(globeSpin)
+
+        // Soft, even "sunlight" that only lights the globe (category 2), so its face reads
+        // clearly without a glossy hotspot.
+        let sun = SCNLight()
+        sun.type = .directional
+        sun.color = hex(0xFFE2C4)
+        sun.intensity = 320
+        sun.categoryBitMask = 2
+        let sunNode = SCNNode()
+        sunNode.light = sun
+        sunNode.position = SCNVector3(0.4, 0.8, 1.5)
+        sunNode.look(at: SCNVector3(-0.6, 0.2, -0.6))
+        environment.addChildNode(sunNode)
         globeNode = globeStand
 
         // Light from an unseen lamp up to the left: a soft omni wash plus a shadow-casting spot.
@@ -140,6 +177,7 @@ final class RoomView: SCNView {
         glow.attenuationStartDistance = 0.1
         glow.attenuationEndDistance = 5
         glow.attenuationFalloffExponent = 2
+        glow.categoryBitMask = 1
         node(SCNSphere(radius: 0.001), SCNVector3(0, 0, 0), in: lamp).light = glow
 
         let key = SCNLight()
@@ -149,6 +187,7 @@ final class RoomView: SCNView {
         key.spotInnerAngle = 20
         key.spotOuterAngle = 100
         key.castsShadow = true
+        key.categoryBitMask = 1
         key.shadowRadius = 10
         key.shadowSampleCount = 16
         key.shadowMapSize = CGSize(width: 2048, height: 2048)
@@ -353,18 +392,17 @@ final class RoomView: SCNView {
         let playing = np.isPlaying
         let lowPower = st.pauseInLowPower && ProcessInfo.processInfo.isLowPowerModeEnabled
 
+        // Label and framed print show what's playing now; the stand shows what's up next;
+        // the pile on the desk holds what already played.
         let art = (st.hideArtWhenPaused && !playing) ? nil : np.artwork
-        let key = art == nil ? "default" : (np.track?.id ?? "?")
+        let key = (art == nil ? "default" : (np.track?.id ?? "?")) + (np.upNextArt == nil ? "" : "+next")
         if key != shownArtKey {
             labelMaterial.diffuse.contents = art ?? Art.defaultLabel
-            sleeveMaterial.diffuse.contents = art ?? Art.defaultSleeve
-            sleeveMaterial.emission.contents = art ?? Art.defaultSleeve
+            frameMaterial.diffuse.contents = art ?? Art.defaultSleeve
+            let next = np.upNextArt ?? Art.defaultSleeve
+            sleeveMaterial.diffuse.contents = next
+            sleeveMaterial.emission.contents = next
             shownArtKey = key
-        }
-        let last = np.recent.first
-        if last?.id != frameArtID || frameMaterial.diffuse.contents == nil {
-            frameMaterial.diffuse.contents = last?.image ?? Art.defaultSleeve
-            frameArtID = last?.id
         }
 
         recordSpin.isPaused = scratching || !(playing && !lowPower)
@@ -447,6 +485,36 @@ final class RoomView: SCNView {
         scratching = false
         rendersContinuously = false
         stateChanged()
+    }
+
+    // MARK: Sun position
+
+    /// Points the globe's day side at where the sun is overhead right now: the subsolar
+    /// latitude is the solar declination, and its longitude follows UTC time (corrected
+    /// by the equation of time).
+    private func updateSun() {
+        let now = Date()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let day = Double(cal.ordinality(of: .day, in: .year, for: now) ?? 1)
+        let c = cal.dateComponents([.hour, .minute, .second], from: now)
+        let hours = Double(c.hour ?? 0) + Double(c.minute ?? 0) / 60 + Double(c.second ?? 0) / 3600
+
+        let declination = -23.44 * cos(2 * .pi / 365 * (day + 10)) * .pi / 180
+        let b = 2 * Double.pi * (day - 81) / 364
+        let equationOfTime = 9.87 * sin(2 * b) - 7.53 * cos(b) - 1.5 * sin(b)   // minutes
+        let longitude = -15 * (hours - 12 + equationOfTime / 60) * .pi / 180
+
+        let dir = SCNVector3(CGFloat(cos(declination) * cos(longitude)),
+                             CGFloat(cos(declination) * sin(longitude)),
+                             CGFloat(sin(declination)))
+        earthMaterial?.setValue(NSValue(scnVector3: dir), forKey: "sunDir")
+        if sunTimer == nil {
+            sunTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                self?.updateSun()
+                self?.needsDisplay = true
+            }
+        }
     }
 
     // MARK: Spinning the globe by hand

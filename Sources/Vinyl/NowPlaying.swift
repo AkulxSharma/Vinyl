@@ -35,6 +35,9 @@ final class NowPlaying {
     private(set) var isPlaying = false
     /// Covers of previously played tracks, newest first.
     private(set) var recent: [(id: String, image: CGImage)] = []
+    /// Cover of the next track, when the player exposes it (Apple Music playing a playlist
+    /// in order). Spotify's desktop app doesn't share its queue without a web login.
+    private(set) var upNextArt: CGImage?
     /// Set when macOS denied Automation access to a player.
     private(set) var automationDenied = false
 
@@ -181,6 +184,8 @@ final class NowPlaying {
         if trackChanged {
             artwork = artCache[t.id]
             if artwork == nil { fetchArtwork(for: t, from: s) }
+            upNextArt = nil
+            fetchUpNext(after: t, from: s)
         }
         post()
     }
@@ -297,6 +302,29 @@ final class NowPlaying {
                     self.artwork = image
                     self.post()
                 }
+            }
+        }
+    }
+
+    private func fetchUpNext(after t: TrackInfo, from s: PlayerSource) {
+        guard s == .music else { return }
+        let body = """
+        if shuffle enabled then return ""
+        set p to current playlist
+        set i to index of current track
+        if i < (count of tracks of p) then
+            set n to track (i + 1) of p
+            if (count of artworks of n) > 0 then return raw data of artwork 1 of n
+        end if
+        return ""
+        """
+        scriptQueue.async {
+            guard let data = self.run(s, body)?.data, !data.isEmpty,
+                  let image = Self.cgImage(from: data) else { return }
+            DispatchQueue.main.async {
+                guard self.track?.id == t.id else { return }
+                self.upNextArt = image
+                self.post()
             }
         }
     }
