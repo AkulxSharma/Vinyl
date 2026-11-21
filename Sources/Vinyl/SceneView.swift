@@ -363,18 +363,15 @@ final class SceneView: NSView {
 
         let R = 0.38 * S
         let rc = CGPoint(x: plateW / 2 - 0.12 * S, y: plateD / 2)
-        let pr = R * 1.05
-        let side = CALayer()   // platter's visible side, offset "down" in the squashed plane
-        side.frame = CGRect(x: rc.x - pr, y: rc.y - pr - 0.05 * S / k, width: 2 * pr, height: 2 * pr)
-        side.cornerRadius = pr
-        side.backgroundColor = hex(0x2A2A2C).cgColor
-        deck.addSublayer(side)
-        let platter = gradient(CGRect(x: rc.x - pr, y: rc.y - pr, width: 2 * pr, height: 2 * pr),
-                               [hex(0xB8B8BC), hex(0x6A6A6E), hex(0xCFCFD2), hex(0x6A6A6E), hex(0xB8B8BC)],
-                               start: CGPoint(x: 0.5, y: 0.5), end: CGPoint(x: 0.5, y: 1), type: .conic)
-        platter.cornerRadius = pr
-        platter.masksToBounds = true
-        deck.addSublayer(platter)
+        // Thin record edge: a slightly darker disc peeking out just below, for a hint of thickness.
+        let edge = CALayer()
+        edge.frame = CGRect(x: rc.x - R, y: rc.y - R - 0.012 * S / k, width: 2 * R, height: 2 * R)
+        edge.cornerRadius = R
+        edge.backgroundColor = hex(0x050505).cgColor
+        edge.shadowOpacity = 0.5
+        edge.shadowRadius = 0.02 * S
+        edge.shadowOffset = .zero
+        deck.addSublayer(edge)
 
         makeRecord(center: rc, R: R, z: 0, parent: deck)
         recordGroup.shadowOpacity = 0.3
@@ -384,6 +381,7 @@ final class SceneView: NSView {
 
         let pivot = CGPoint(x: rc.x + 1.15 * R, y: rc.y + 0.85 * R)
         arm = makeArm(pivot: pivot, R: R, S: S, parent: deck)
+        arm?.shadowOpacity = 0
         // Arm post: an upright cylinder, drawn unsquashed so it stands up off the deck.
         let pp = project(pivot)
         let postW = 0.07 * S, postH = 0.09 * S
