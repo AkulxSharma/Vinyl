@@ -85,15 +85,15 @@ final class RoomView: SCNView {
         // Desk: walnut top with a visible front edge.
         let desk = SCNBox(width: 6, height: 0.05, length: 1.5, chamferRadius: 0.004)
         let wood = pbr(Art.woodTexture, rough: 0.5)
-        wood.diffuse.wrapS = .repeat
-        wood.diffuse.wrapT = .repeat
-        wood.diffuse.contentsTransform = SCNMatrix4MakeScale(4, 2, 1)
+        wood.diffuse.wrapS = .mirror
+        wood.diffuse.wrapT = .mirror
+        wood.diffuse.contentsTransform = SCNMatrix4MakeScale(2.5, 1.5, 1)
         desk.materials = [wood]
         node(desk, SCNVector3(0, -0.025, -0.2), in: environment)
 
         // Globe lamp, back right.
         let lamp = SCNNode()
-        lamp.position = SCNVector3(0.72, 0, -0.78)
+        lamp.position = SCNVector3(-0.62, 0, -0.8)
         environment.addChildNode(lamp)
         let brass = pbr(hex(0xC89B5A), rough: 0.3, metal: 1)
         let foot = SCNCylinder(radius: 0.075, height: 0.018)
@@ -105,7 +105,7 @@ final class RoomView: SCNView {
         let globe = SCNSphere(radius: 0.085)
         let opal = pbr(hex(0x806040), rough: 0.6)
         opal.emission.contents = hex(0xFFB86A)
-        opal.emission.intensity = 6
+        opal.emission.intensity = 2.5
         globe.materials = [opal]
         node(globe, SCNVector3(0, 0.33, 0), in: lamp)
         lamp.enumerateHierarchy { n, _ in n.castsShadow = false }
@@ -114,7 +114,7 @@ final class RoomView: SCNView {
         let glow = SCNLight()
         glow.type = .omni
         glow.color = hex(0xFF9E62)
-        glow.intensity = 8
+        glow.intensity = 2.5
         glow.attenuationStartDistance = 0.1
         glow.attenuationEndDistance = 4
         glow.attenuationFalloffExponent = 1
@@ -123,9 +123,9 @@ final class RoomView: SCNView {
         let key = SCNLight()
         key.type = .spot
         key.color = hex(0xFFA872)
-        key.intensity = 30
-        key.spotInnerAngle = 50
-        key.spotOuterAngle = 110
+        key.intensity = 18
+        key.spotInnerAngle = 20
+        key.spotOuterAngle = 100
         key.castsShadow = true
         key.shadowRadius = 10
         key.shadowSampleCount = 16
@@ -136,13 +136,13 @@ final class RoomView: SCNView {
         key.attenuationFalloffExponent = 1.5
         let keyNode = SCNNode()
         keyNode.light = key
-        keyNode.position = SCNVector3(0.72, 0.45, -0.62)
-        keyNode.look(at: SCNVector3(-0.35, 0, -0.25))
+        keyNode.position = SCNVector3(-0.62, 0.5, -0.6)
+        keyNode.look(at: SCNVector3(0.2, 0, -0.3))
         environment.addChildNode(keyNode)
 
         // Framed print with a brass picture light above it.
         let frame = SCNNode()
-        frame.position = SCNVector3(-0.08, 0.47, -0.93)
+        frame.position = SCNVector3(0.02, 0.43, -0.93)
         environment.addChildNode(frame)
         let darkWood = pbr(hex(0x2A1A10), rough: 0.45)
         let outer = SCNBox(width: 0.34, height: 0.34, length: 0.025, chamferRadius: 0.002)
@@ -163,14 +163,14 @@ final class RoomView: SCNView {
         let pictureLight = SCNLight()
         pictureLight.type = .spot
         pictureLight.color = hex(0xFFC690)
-        pictureLight.intensity = 7
-        pictureLight.spotInnerAngle = 10
+        pictureLight.intensity = 2.5
+        pictureLight.spotInnerAngle = 5
         pictureLight.spotOuterAngle = 95
         let pl = SCNNode()
         pl.light = pictureLight
         pl.position = SCNVector3(0, 0.2, 0.09)
         frame.addChildNode(pl)
-        pl.look(at: SCNVector3(-0.08, 0.25, -0.93))
+        pl.look(at: SCNVector3(-0.08, 0.4, -0.93))
 
         // Very low warm ambient so shadows stay rich but not black.
         let ambient = SCNLight()
@@ -185,7 +185,7 @@ final class RoomView: SCNView {
         let fill = SCNLight()
         fill.type = .directional
         fill.color = hex(0xC8906A)
-        fill.intensity = 45
+        fill.intensity = 30
         let f = SCNNode()
         f.light = fill
         f.position = SCNVector3(-0.5, 1, 2)
@@ -194,7 +194,7 @@ final class RoomView: SCNView {
 
         // Sleeve on a wooden stand, front left, turned toward the turntable.
         let stand = SCNNode()
-        stand.position = SCNVector3(0.43, 0, -0.42)
+        stand.position = SCNVector3(0.45, 0, -0.38)
         stand.eulerAngles.y = -0.3
         room.rootNode.addChildNode(stand)
         let base = SCNBox(width: 0.34, height: 0.022, length: 0.07, chamferRadius: 0.003)
@@ -221,7 +221,7 @@ final class RoomView: SCNView {
         node(plinth, SCNVector3(0, 0.035, 0), in: turntable)
 
         let topPlate = SCNBox(width: 0.448, height: 0.008, length: 0.328, chamferRadius: 0.004)
-        topPlate.materials = [pbr(hex(0xD9CDB6), rough: 0.6)]
+        topPlate.materials = [pbr(hex(0x9C8C76), rough: 0.75)]
         node(topPlate, SCNVector3(0, 0.074, 0), in: turntable)
 
         let aluminium = pbr(hex(0xC9C9CC), rough: 0.25, metal: 1)
@@ -287,7 +287,7 @@ final class RoomView: SCNView {
         cam.zNear = 0.05
         cam.zFar = 20
         cam.wantsHDR = true
-        cam.bloomIntensity = 0.8
+        cam.bloomIntensity = 0.45
         cam.bloomThreshold = 0.75
         cam.bloomBlurRadius = 9
         cam.vignettingIntensity = 0.7
@@ -295,7 +295,7 @@ final class RoomView: SCNView {
         cam.screenSpaceAmbientOcclusionIntensity = 1.2
         cam.screenSpaceAmbientOcclusionRadius = 0.06
         cam.wantsExposureAdaptation = false
-        cam.exposureOffset = -0.3
+        cam.exposureOffset = -0.5
         cam.saturation = 0.92
         cameraNode.camera = cam
         room.rootNode.addChildNode(cameraNode)
@@ -310,7 +310,7 @@ final class RoomView: SCNView {
         case .close: distance = 0.7
         }
         cameraNode.position = SCNVector3(0, 0.1 + 0.3 * CGFloat(distance), CGFloat(distance))
-        cameraNode.look(at: SCNVector3(0, 0.12, -0.4))
+        cameraNode.look(at: SCNVector3(0, 0.15, -0.42))
     }
 
     // MARK: Live state
@@ -370,7 +370,7 @@ final class RoomView: SCNView {
             stackNodes[id] = nil
             n.runAction(.sequence([.fadeOut(duration: 0.4), .removeFromParentNode()]))
         }
-        let pile = SCNVector3(-0.5, 0, -0.2)
+        let pile = SCNVector3(-0.42, 0, -0.12)
         let count = items.count
         for (i, item) in items.enumerated() {
             let level = CGFloat(count - 1 - i)               // newest on top
