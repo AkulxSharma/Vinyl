@@ -9,6 +9,8 @@
 ![No login](https://img.shields.io/badge/no-login-0ea5e9?style=flat-square)
 ![MIT](https://img.shields.io/badge/license-MIT-6366f1?style=flat-square)
 
+<img src="docs/images/hero.png" width="780" alt="Vinyl's Lamplight scene: a turntable on a walnut desk with a desk globe and a framed print">
+
 </div>
 
 While Spotify or Apple Music plays, a record spins on your desktop with the album art on its label. When the song changes, the last record joins a stack of recently played covers. It is free and written from scratch in Swift. It is not affiliated with the commercial Vinyl for Mac app.
