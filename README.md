@@ -26,6 +26,16 @@ While Spotify or Apple Music plays, a record spins on your desktop with the albu
 
 ## Install
 
+**With Homebrew** (Apple silicon Macs):
+
+```bash
+brew install --cask ma67-ex/tap/vinyl
+```
+
+Then open **Vinyl** from your Applications folder. Look for the record icon in the menu bar to switch scenes or quit. The first time, macOS asks whether Vinyl may control Spotify or Music. Click **OK** so it can read the current track.
+
+**Or build it yourself:**
+
 1. Press **⌘ Space**, type **Terminal**, press **Return**.
 2. Paste these lines and press **Return**:
 
@@ -35,9 +45,7 @@ While Spotify or Apple Music plays, a record spins on your desktop with the albu
    ./build.sh --install
    ```
 
-3. Vinyl opens. Look for the record icon in the menu bar to switch scenes or quit.
-
-If macOS asks to install developer tools, click **Install**, then paste the lines again. The first time, macOS asks whether Vinyl may control Spotify or Music. Click **OK** so it can read the current track.
+If macOS asks to install developer tools, click **Install**, then paste the lines again.
 
 ## Privacy
 
