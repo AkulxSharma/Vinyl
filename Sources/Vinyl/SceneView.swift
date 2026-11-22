@@ -211,6 +211,7 @@ final class SceneView: NSView {
         p.shadowOpacity = 0.6
         p.shadowRadius = 0.04 * S
         p.shadowOffset = CGSize(width: 0, height: -0.02 * S)
+        p.shadowPath = CGPath(roundedRect: p.bounds, cornerWidth: p.cornerRadius, cornerHeight: p.cornerRadius, transform: nil)
         _ = add(p, z: -10)
 
         let R = 0.4 * S
@@ -371,6 +372,7 @@ final class SceneView: NSView {
         edge.shadowOpacity = 0.5
         edge.shadowRadius = 0.02 * S
         edge.shadowOffset = .zero
+        edge.shadowPath = CGPath(ellipseIn: edge.bounds, transform: nil)
         deck.addSublayer(edge)
 
         makeRecord(center: rc, R: R, z: 0, parent: deck)
@@ -429,6 +431,7 @@ final class SceneView: NSView {
         sl.shadowOpacity = 0.55
         sl.shadowRadius = 0.03 * S
         sl.shadowOffset = CGSize(width: -0.01 * S, height: 0)
+        sl.shadowPath = CGPath(rect: sl.bounds, transform: nil)
         sleeve = add(sl, z: -10)
         let stand = gradient(CGRect(x: sx - sz * 0.55, y: sBase, width: sz * 1.1, height: 0.05 * S),
                              [hex(0x8A5A34), hex(0x4A2C16)])
@@ -478,6 +481,7 @@ final class SceneView: NSView {
         sl.shadowOpacity = 0.65
         sl.shadowRadius = 0.04 * S
         sl.shadowOffset = CGSize(width: 0.01 * S, height: -0.025 * S)
+        sl.shadowPath = CGPath(rect: sl.bounds, transform: nil)
         sleeve = add(sl, z: 10)
         geo.interactRect = sl.frame.union(CGRect(x: geo.recordOut.x - R, y: geo.recordOut.y - R, width: 2 * R, height: 2 * R))
 
